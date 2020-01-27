@@ -42,7 +42,7 @@ bufferI1R = 5*SIZE; // Right channels
 bufferI2R = 6*SIZE;
 bufferO1R = 7*SIZE;
 bufferO2R = 8*SIZE;
-noiseBufferR = 9*SIZE; 
+noiseBufferR = 9*SIZE;
 
 // samplesCollected will be our position in the last of the two tiles.
 // As such, it'll range from 0 to (SIZE/2) - 1.
@@ -62,7 +62,7 @@ pdc_top_ch=2;
 //   }Y(f)|^2/(|Y(f)|^2 + k^2 |N(f)|^2),
 // given the real and imaginary parts of Y(f), the real and imaginary parts of N(f), and k^2.
 // This also tells the JSFX compiler that we'll use two local variables, yNorm and nNorm.
-// This functiton also includes a factor of 1/SIZE that we need to normalize the FFT.
+// This function also includes a factor of 1/(2*SIZE) that we appear to need to normalize the FFT.
 function computeAttenuation(yReal yImag nReal nImag kSquared) local(yNorm nNorm)
 (
   // Compute |Y(f)|^2 = real(Y(f))^2 + imaginary(Y(f))^2
@@ -70,7 +70,7 @@ function computeAttenuation(yReal yImag nReal nImag kSquared) local(yNorm nNorm)
   // The same for the noise component:
   nNorm = sqr(nReal) + sqr(nImag);
   // The function returns the last thing computed in it:
-  yNorm / (SIZE * (yNorm + kSquared * nNorm));
+  yNorm / (2.0 * SIZE * (yNorm + kSquared * nNorm));
 );
 
 // Read our input audio and write it into the input buffers.
@@ -129,7 +129,7 @@ samplesCollected == SIZE/2 ? (
     memcpy(noiseBufferL, bufferI1L, SIZE);
     memcpy(noiseBufferR, bufferI1R, SIZE);
   );
-  
+
   // Apply Norbert Weiner's filtering algorithm,
   //   X(f) = Y(f) * (|Y(f)|^2)/(|Y(f)|^2 + k^2 |N(f)|^2)
   // sqr() computes the square of a number, and abs() computes the absolute value of a number.
@@ -150,13 +150,13 @@ samplesCollected == SIZE/2 ? (
     
     // Compute attenuation factor and apply it to the output:
     attenuationFactor = computeAttenuation(bufferI1L[outIndex], bufferI1L[outIndex+1],
-                                           noiseBuffer[outIndex], noiseBuffer[outIndex+1], kSquared);
+                                           noiseBufferL[outIndex], noiseBufferL[outIndex+1], kSquared);
     bufferO1L[outIndex] = bufferI1L[outIndex] * attenuationFactor;
     bufferO1L[outIndex+1] = bufferI1L[outIndex+1] * attenuationFactor;
     
     // Do the same thing again, but for the right channel:
     attenuationFactor = computeAttenuation(bufferI1R[outIndex], bufferI1R[outIndex+1],
-                                           noiseBuffer[outIndex], noiseBuffer[outIndex+1], kSquared);
+                                           noiseBufferR[outIndex], noiseBufferR[outIndex+1], kSquared);
     bufferO1R[outIndex] = bufferI1R[outIndex] * attenuationFactor;
     bufferO1R[outIndex+1] = bufferI1R[outIndex+1] * attenuationFactor;
     
@@ -187,3 +187,11 @@ samplesCollected == SIZE/2 ? (
   bufferO1R = bufferO2R;
   bufferO2R = temp;
 )
+
+@serialize
+// Sliders are serialized automatically, so all we have to serialize is the two noise buffers.
+// JSFX's serialization works in a clever way: when reading the state of the plugin from a serialized
+// version, these functions copy data into noiseBufferL and noiseBufferR. But when writing out the
+// state of the plugin, they work the other way, copying data out of noiseBufferL and noiseBufferR.
+file_mem(0, noiseBufferL, SIZE);
+file_mem(0, noiseBufferR, SIZE);
