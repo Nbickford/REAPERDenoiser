@@ -22,10 +22,10 @@ slider2:1<0.0,10.0,0.001>Noise Scale
 // channels we can handle. In this case, the plugin is stereo (a monophonic
 // plugin would be simpler, but I almost always use this to denoise stereo
 // audio), so we define two input and output pins.
-in_pin:Noisy Audio (Channel 1)
-in_pin:Noisy Audio (Channel 2)
-out_pin:Denoised Audio (Channel 1)
-out_pin:Denoised Audio (Channel 2)
+in_pin:Noisy Audio 1
+in_pin:Noisy Audio 2
+out_pin:Denoised Audio 1
+out_pin:Denoised Audio 2
 
 @init
 // On initialization, initialize all of our variables.
