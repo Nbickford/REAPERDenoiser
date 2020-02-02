@@ -31,7 +31,7 @@ out_pin:Denoised Audio 2
 // On initialization, initialize all of our variables.
 
 // The FFT size will always be constant.
-SIZE = 32768;
+SIZE = 16384;
 
 // We don't do any allocation in this plugin, since we know we start out with 8M
 // words of memory. So all we need to do is construct some pointers to memory,
@@ -47,6 +47,7 @@ bufferI2R = 6*SIZE;
 bufferO1R = 7*SIZE;
 bufferO2R = 8*SIZE;
 noiseBufferR = 9*SIZE;
+freembuf(10*SIZE + 1);
 
 // samplesCollected will be our position in the last of the two tiles.
 // As such, it'll range from 0 to (SIZE/2) - 1.
@@ -94,8 +95,8 @@ tilePos2 = samplesCollected;
 // We'll apply each tile's envelope as we write the sample into
 // the tile's buffer.
 // See https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
-hannWindowTile1 = 0.5 - 0.5 * cos(2*$pi*tilePos1/(SIZE-1));
-hannWindowTile2 = 0.5 - 0.5 * cos(2*$pi*tilePos2/(SIZE-1));
+hannWindowTile1 = 0.5 - 0.5 * cos(2*$pi*tilePos1/SIZE);
+hannWindowTile2 = 0.5 - 0.5 * cos(2*$pi*tilePos2/SIZE);
 
 // Write into the input buffers:
 bufferI1L[tilePos1] = sampleLeft * hannWindowTile1;
@@ -126,11 +127,11 @@ samplesCollected == SIZE/2 ? (
   fft_permute(bufferI1R, SIZE/2);
   
   // Our buffers now look like
-  // [band 0 amplitude, band SIZE/2-1 amplitude,
+  // [band 0 amplitude, band SIZE/2 amplitude,
   //    real part of band 1, imaginary part of band 1,
   //    real part of band 2, imaginary part of band 2,
   //    ...
-  //    real part of band SIZE/2-2, imaginary part of band SIZE/2-2]
+  //    real part of band SIZE/2-1, imaginary part of band SIZE/2-1]
   
   // If slider1 is greater than 0.5 (i.e. the user selected "Record Noise
   // Sample", we store the FFTs of each of these buffers.
@@ -147,7 +148,7 @@ samplesCollected == SIZE/2 ? (
   // value of a number.
   kSquared = sqr(slider2); // slider2 is the Noise Scale from above.
   
-  // First, handle band 0 and band SIZE/2-1 separately, since as we've seen,
+  // First, handle band 0 and band SIZE/2 separately, since as we've seen,
   // they're laid out in memory differently than the rest of the bands.
   // They also have zero imaginary part.
   bufferO1L[0] = bufferI1L[0] * computeAttenuation(bufferI1L[0], 0, noiseBufferL[0], 0, kSquared);
