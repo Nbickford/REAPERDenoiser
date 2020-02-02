@@ -136,8 +136,8 @@ samplesCollected == SIZE/2 ? (
   // If slider1 is greater than 0.5 (i.e. the user selected "Record Noise
   // Sample", we store the FFTs of each of these buffers.
   slider1 > 0.5? (
-    // memcpy(A, B, C) copies C words from the memory starting at B into the
-	// memory starting at A.
+  // memcpy(A, B, C) copies C words from the memory starting at B into the
+  // memory starting at A.
     memcpy(noiseBufferL, bufferI1L, SIZE);
     memcpy(noiseBufferR, bufferI1R, SIZE);
   );
@@ -164,19 +164,19 @@ samplesCollected == SIZE/2 ? (
     
     // Compute attenuation factor and apply it to the output:
     attenuationFactor = computeAttenuation(
-		bufferI1L[outIndex], bufferI1L[outIndex+1],
-        noiseBufferL[outIndex], noiseBufferL[outIndex+1],
-		kSquared
-	);
+      bufferI1L[outIndex], bufferI1L[outIndex+1],
+      noiseBufferL[outIndex], noiseBufferL[outIndex+1],
+      kSquared
+    );
     bufferO1L[outIndex] = bufferI1L[outIndex] * attenuationFactor;
     bufferO1L[outIndex+1] = bufferI1L[outIndex+1] * attenuationFactor;
     
     // Do the same thing again, but for the right channel:
     attenuationFactor = computeAttenuation(
-		bufferI1R[outIndex], bufferI1R[outIndex+1],
-		noiseBufferR[outIndex], noiseBufferR[outIndex+1],
-		kSquared
-	);
+      bufferI1R[outIndex], bufferI1R[outIndex+1],
+      noiseBufferR[outIndex], noiseBufferR[outIndex+1],
+      kSquared
+    );
     bufferO1R[outIndex] = bufferI1R[outIndex] * attenuationFactor;
     bufferO1R[outIndex+1] = bufferI1R[outIndex+1] * attenuationFactor;
     
