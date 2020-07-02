@@ -41,13 +41,19 @@ bufferI1L = 0; // The left input tile 1 buffer starts at memory address 0.
 bufferI2L = SIZE; // The left input tile 2 buffer starts at memory address SIZE.
 bufferO1L = 2*SIZE; // The left output tile 1 buffer starts at address 2*SIZE.
 bufferO2L = 3*SIZE; // And so on
-noiseBufferL = 4*SIZE; // The noise buffer starts at memory address 4*SIZE
-bufferI1R = 5*SIZE; // Right channels
-bufferI2R = 6*SIZE;
-bufferO1R = 7*SIZE;
-bufferO2R = 8*SIZE;
-noiseBufferR = 9*SIZE;
-freembuf(10*SIZE + 1);
+noiseBufferL = 4*SIZE; // The FFT of the noise sample uses 2*SIZE memory
+// addresses, as opposed to the rest of the buffers.
+bufferI1R = 6*SIZE; // Right channels
+bufferI2R = 7*SIZE;
+bufferO1R = 8*SIZE;
+bufferO2R = 9*SIZE;
+noiseBufferR = 10*SIZE;
+// We also use a temporary buffer of complex numbers in order to store our
+// audio signals using complex numbers. REAPER's implementation of JSFX supports
+// fft_real, which allows us to avoid this, as of this writing, but ReaPlugs
+// doesn't have this yet.
+fftBuffer = 12 * SIZE; // length 2*SIZE
+freembuf(14*SIZE + 1);
 
 // samplesCollected will be our position in the last of the two tiles.
 // As such, it'll range from 0 to (SIZE/2) - 1.
@@ -71,7 +77,8 @@ pdc_top_ch=2;
 // given the real and imaginary parts of Y(f), the real and imaginary parts of
 // N(f), and k^2. This also tells the JSFX compiler that we'll use two local
 // variables, yNorm and nNorm. This function also includes a factor of
-// 1/(2*SIZE) that we appear to need to normalize the FFT.
+// 1/SIZE that we need to normalize the FFT, since the FFT is over SIZE complex
+// numbers.
 function computeAttenuation(yReal yImag nReal nImag kSquared) local(yNorm nNorm)
 (
   // Compute |Y(f)|^2 = real(Y(f))^2 + imaginary(Y(f))^2
@@ -79,7 +86,7 @@ function computeAttenuation(yReal yImag nReal nImag kSquared) local(yNorm nNorm)
   // The same for the noise component:
   nNorm = sqr(nReal) + sqr(nImag);
   // The function returns the last thing computed in it:
-  yNorm / (2.0 * SIZE * (yNorm + kSquared * nNorm));
+  yNorm / (SIZE * (yNorm + kSquared * nNorm));
 );
 
 // Read our input audio and write it into the input buffers.
@@ -117,91 +124,136 @@ samplesCollected += 1;
 
 samplesCollected == SIZE/2 ? (
   samplesCollected = 0;
-  // This computes the real FFT of each buffer in-place:
-  fft_real(bufferI1L, SIZE);
-  fft_real(bufferI1R, SIZE);
+  
+  // We'll process each channel in turn. First, we'll process the left channel.
+  // The first thing we need to do is to copy from our tile of audio signals,
+  // bufferI1L, into a temporary array that stores the real and imaginary parts
+  // of SIZE complex numbers, and so has 2*SIZE words. This is necessary because
+  // JSFX's fft function operates on complex numbers; JSFX also has fft_real,
+  // but this isn't supported in ReaPlugs yet.
+  //
+  // bufferI1L looks like
+  // [audio sample 0, audio sample 1, ..., audio sample SIZE - 1]
+  // and fftScratchBuffer will look like
+  // [audio sample 0, 0, audio sample 1, 0, ..., audio sample SIZE - 1, 0]
+  // (i.e. it'll store the complex numbers (spl0 + 0i, spl1 + 0i, ...).
+  //
+  // Loop over each of the audio samples, from index = 0 to SIZE - 1.
+  index = 0;
+  loop(SIZE,
+    fftBuffer[2 * index + 0] = bufferI1L[index]; // Real part
+    fftBuffer[2 * index + 1] = 0.0; // Imaginary part
+    index += 1; // Next index
+  );
+  
+  // Now compute the FFT of the buffer in-place:
+  // Note that SIZE specifies the number of complex numbers.
+  fft(fftBuffer, SIZE);
   // The different frequency bins are now stored in permuted order. We need to
   // call fft_permute to get them in order of their frequencies.
   // See https://www.reaper.fm/sdk/js/advfunc.php#js_advanced for more info.
-  fft_permute(bufferI1L, SIZE/2);
-  fft_permute(bufferI1R, SIZE/2);
+  fft_permute(fftBuffer, SIZE);
   
-  // Our buffers now look like
-  // [band 0 amplitude, band SIZE/2 amplitude,
-  //    real part of band 1, imaginary part of band 1,
-  //    real part of band 2, imaginary part of band 2,
-  //    ...
-  //    real part of band SIZE/2-1, imaginary part of band SIZE/2-1]
+  // fftScratchBuffer now looks like
+  // [band 0 real part, band 0 imaginary part,
+  //  band 1 real part, band 1 imaginary part,
+  //  ...
+  //  band SIZE-1 real part, band SIZE-1 imaginary part].
+  // Note that we don't get bands SIZE/2 + 1 to SIZE-1 for free - there's no
+  // real extra data there! Those bands are conjugated, reversed versions
+  // of bands 1 to SIZE/2 - 1. In other words, since we put in SIZE words of
+  // information, we get only SIZE words of information out.
   
   // If slider1 is greater than 0.5 (i.e. the user selected "Record Noise
   // Sample", we store the FFTs of each of these buffers.
   slider1 > 0.5? (
-  // memcpy(A, B, C) copies C words from the memory starting at B into the
-  // memory starting at A.
-    memcpy(noiseBufferL, bufferI1L, SIZE);
-    memcpy(noiseBufferR, bufferI1R, SIZE);
+    // memcpy(A, B, C) copies C words from the memory starting at B into
+    // the memory starting at A.
+    memcpy(noiseBufferL, fftBuffer, 2*SIZE);
   );
-
+  
   // Apply Norbert Weiner's filtering algorithm,
   //   X(f) = Y(f) * (|Y(f)|^2)/(|Y(f)|^2 + k^2 |N(f)|^2)
   // sqr() computes the square of a number, and abs() computes the absolute
   // value of a number.
   kSquared = sqr(slider2); // slider2 is the Noise Scale from above.
   
-  // First, handle band 0 and band SIZE/2 separately, since as we've seen,
-  // they're laid out in memory differently than the rest of the bands.
-  // They also have zero imaginary part.
-  bufferO1L[0] = bufferI1L[0] * computeAttenuation(bufferI1L[0], 0, noiseBufferL[0], 0, kSquared);
-  bufferO1R[0] = bufferI1R[0] * computeAttenuation(bufferI1R[0], 0, noiseBufferR[0], 0, kSquared);
-  bufferO1L[1] = bufferI1L[1] * computeAttenuation(bufferI1L[1], 0, noiseBufferL[1], 0, kSquared);
-  bufferO1R[1] = bufferI1R[1] * computeAttenuation(bufferI1R[1], 0, noiseBufferR[1], 0, kSquared);
-  
-  // Now, loop over bands 1 to SIZE/2-1.
-  bandIndex = 1;
-  loop(SIZE/2-1,
-    // Compute output index
-    outIndex = bandIndex * 2;
-    
-    // Compute attenuation factor and apply it to the output:
+  // Loop over each band, from bandIndex = 0 to SIZE - 1.
+  bandIndex = 0;
+  loop(SIZE,
     attenuationFactor = computeAttenuation(
-      bufferI1L[outIndex], bufferI1L[outIndex+1],
-      noiseBufferL[outIndex], noiseBufferL[outIndex+1],
+      fftBuffer[2 * bandIndex + 0], fftBuffer[2 * bandIndex + 1],
+      noiseBufferL[2 * bandIndex + 0], noiseBufferL[2 * bandIndex + 1],
       kSquared
     );
-    bufferO1L[outIndex] = bufferI1L[outIndex] * attenuationFactor;
-    bufferO1L[outIndex+1] = bufferI1L[outIndex+1] * attenuationFactor;
-    
-    // Do the same thing again, but for the right channel:
-    attenuationFactor = computeAttenuation(
-      bufferI1R[outIndex], bufferI1R[outIndex+1],
-      noiseBufferR[outIndex], noiseBufferR[outIndex+1],
-      kSquared
-    );
-    bufferO1R[outIndex] = bufferI1R[outIndex] * attenuationFactor;
-    bufferO1R[outIndex+1] = bufferI1R[outIndex+1] * attenuationFactor;
-    
-    // Next band
+    fftBuffer[2 * bandIndex + 0] *= attenuationFactor;
+    fftBuffer[2 * bandIndex + 1] *= attenuationFactor;
     bandIndex += 1;
   );
   
-  // Convert back from the frequency domain to the time domain:
-  fft_ipermute(bufferO1L, SIZE/2);
-  fft_ipermute(bufferO1R, SIZE/2);
-  ifft_real(bufferO1L, SIZE);
-  ifft_real(bufferO1R, SIZE);
+  // Now, undo the FFT (i.e. convert back from the frequency domain to the
+  // time domain):
+  fft_ipermute(fftBuffer, SIZE);
+  ifft(fftBuffer, SIZE);
+  
+  // Copy from the complex numbers in fftBuffer to the output tile:
+  index = 0;
+  loop(SIZE,
+    bufferO1L[index] = fftBuffer[2 * index + 0];
+    index += 1;
+  );
   
   // Finally, swap our tiles:
   temp = bufferI1L;
   bufferI1L = bufferI2L;
   bufferI2L = temp;
   
-  temp = bufferI1R;
-  bufferI1R = bufferI2R;
-  bufferI2R = temp;
-  
   temp = bufferO1L;
   bufferO1L = bufferO2L;
   bufferO2L = temp;
+  
+  // Now, we'll repeat the same steps, for the right channel.
+  // Convert from float to complex
+  index = 0;
+  loop(SIZE,
+    fftBuffer[2 * index + 0] = bufferI1R[index]; // Real part
+    fftBuffer[2 * index + 1] = 0.0; // Imaginary part
+    index += 1; // Next index
+  );
+  // FFT
+  fft(fftBuffer, SIZE);
+  fft_permute(fftBuffer, SIZE);
+  // Possibly copy to noise buffer
+  slider1 > 0.5? (
+    // memcpy(A, B, C) copies C words from the memory starting at B into
+    // the memory starting at A.
+    memcpy(noiseBufferR, fftBuffer, 2*SIZE);
+  );
+  // Attenuation
+  bandIndex = 0;
+  loop(SIZE,
+    attenuationFactor = computeAttenuation(
+      fftBuffer[2 * bandIndex + 0], fftBuffer[2 * bandIndex + 1],
+      noiseBufferR[2 * bandIndex + 0], noiseBufferR[2 * bandIndex + 1],
+      kSquared
+    );
+    fftBuffer[2 * bandIndex + 0] *= attenuationFactor;
+    fftBuffer[2 * bandIndex + 1] *= attenuationFactor;
+    bandIndex += 1;
+  );
+  // Inverse FFT
+  fft_ipermute(fftBuffer, SIZE);
+  ifft(fftBuffer, SIZE);
+  // Convert from complex to output buffer
+  index = 0;
+  loop(SIZE,
+    bufferO1R[index] = fftBuffer[2 * index + 0];
+    index += 1;
+  );
+  // Swap tiles
+  temp = bufferI1R;
+  bufferI1R = bufferI2R;
+  bufferI2R = temp;
   
   temp = bufferO1R;
   bufferO1R = bufferO2R;
