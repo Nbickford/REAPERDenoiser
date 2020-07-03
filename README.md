@@ -1,6 +1,6 @@
 # REAPERDenoiser
 
-*Looking for the JSFX plugin? Get it [here](https://github.com/Nbickford/REAPERDenoiser/raw/master/REAPERDenoiser), and see the install instructions below!*
+*Looking for the JSFX plugin? Get it [here](https://raw.githubusercontent.com/Nbickford/REAPERDenoiser/main/REAPERDenoiser), and see the install instructions below!*
 
 A JSFX denoiser for REAPER based on Norbert Weiner's [deconvolution algorithm](https://en.wikipedia.org/wiki/Wiener_deconvolution). This reduces some of the artifacts you get when using a REAFir subtraction-based approach, but also removes noise more gently. You can also set the Noise Scale value to high levels [to produce a bell-like effect](https://www.neilbickford.com/blog/wp-content/uploads/2020/02/out.mp4)!
 
