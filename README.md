@@ -15,7 +15,7 @@ For more information about the denoiser, please see the accompanying blog post a
 This JSFX plugin can be installed like most other JSFX plugins:
 
 1. Open the REAPER resource folder by opening REAPER and then selecting Options > "Show REAPER resource path in explorer/finder..." from REAPER's menu bar.
-2. Download the REAPERDenoiser JSFX file by clicking on REAPERDenoiser above, clicking on "Raw", and saving the file, or directly from https://github.com/Nbickford/REAPERDenoiser/raw/master/REAPERDenoiser.
+2. Download the REAPERDenoiser JSFX file by clicking on REAPERDenoiser above, clicking on "Raw", and saving the file, or directly from https://raw.githubusercontent.com/Nbickford/REAPERDenoiser/main/REAPERDenoiser.
 3. Move the REAPERDenoiser JSFX file into the Effects directory that you opened in step 1.
 
 That's it!
