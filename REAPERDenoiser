@@ -27,6 +27,7 @@ in_pin:Noisy Audio 2
 out_pin:Denoised Audio 1
 out_pin:Denoised Audio 2
 
+
 @init
 // On initialization, initialize all of our variables.
 
@@ -42,18 +43,18 @@ bufferI2L = SIZE; // The left input tile 2 buffer starts at memory address SIZE.
 bufferO1L = 2*SIZE; // The left output tile 1 buffer starts at address 2*SIZE.
 bufferO2L = 3*SIZE; // And so on
 noiseBufferL = 4*SIZE; // The FFT of the noise sample uses 2*SIZE memory
-// addresses, as opposed to the rest of the buffers.
-bufferI1R = 6*SIZE; // Right channels
-bufferI2R = 7*SIZE;
-bufferO1R = 8*SIZE;
-bufferO2R = 9*SIZE;
-noiseBufferR = 10*SIZE;
+// but taking the norm reduces this to 1*SIZE, and saves time when processing effect
+bufferI1R = 5*SIZE; // Right channels
+bufferI2R = 6*SIZE;
+bufferO1R = 7*SIZE;
+bufferO2R = 8*SIZE;
+noiseBufferR = 9*SIZE;
 // We also use a temporary buffer of complex numbers in order to store our
 // audio signals using complex numbers. REAPER's implementation of JSFX supports
 // fft_real, which allows us to avoid this, as of this writing, but ReaPlugs
 // doesn't have this yet.
-fftBuffer = 12 * SIZE; // length 2*SIZE
-freembuf(14*SIZE + 1);
+fftBuffer = 10 * SIZE; // length 2*SIZE
+freembuf(12*SIZE + 1);
 
 // samplesCollected will be our position in the last of the two tiles.
 // As such, it'll range from 0 to (SIZE/2) - 1.
@@ -69,6 +70,21 @@ samplesCollected = 0;
 pdc_delay = SIZE; 
 pdc_bot_ch=0;
 pdc_top_ch=2;
+
+
+@slider
+// A simple function to zero out the noise buffers when switching mode to "Record Noise Sample"
+// previousMode should default to 0 on first initialization, but setting it to 0 in @init will cause
+// this code to get run again, and the noise profile lost even when switching to "Denoise Input"
+slider1 > 0.5 ? (
+  previousMode < 0.5 ? (
+    bandIndex = 0;
+    memset(noiseBufferL, 0, SIZE);
+    memset(noiseBufferR, 0, SIZE);
+    previousMode = 1;
+  )
+) : previousMode = 0;
+
 
 @sample
 // We'll write a function to denoise a single channel, and then we'll call this
@@ -152,9 +168,18 @@ local(sample tilePos1 tilePos2 hannWindowTile1 hannWindowTile2 index bandIndex
     // If slider1 is greater than 0.5 (i.e. the user selected "Record Noise
     // Sample", we store the FFTs of each of these buffers.
     slider1 > 0.5? (
-      // memcpy(A, B, C) copies C words from the memory starting at B into
-      // the memory starting at A.
-      memcpy(noiseBuffer, fftBuffer, 2*SIZE);
+      // for each band, compare the norm of the noise in this frame.
+      // If it is greater than what's already there for this band, then copy
+      // it into the noiseBuffer
+      index = 0;
+      loop(SIZE,
+        normSquareNew = sqr(fftBuffer[2 * index + 0]) + sqr(fftBuffer[2 * index + 1]);
+        normSquareOld = noiseBuffer[index];
+        normSquareNew >= normSquareOld ? (
+          noiseBuffer[index] = normSquareNew;
+        );
+        index += 1;
+      );
     );
     
     // Apply Norbert Weiner's filtering algorithm,
@@ -171,7 +196,7 @@ local(sample tilePos1 tilePos2 hannWindowTile1 hannWindowTile2 index bandIndex
       // Compute |Y(f)|^2 = real(Y(f))^2 + imaginary(Y(f))^2
       yNorm = sqr(fftBuffer[2 * bandIndex + 0]) + sqr(fftBuffer[2 * bandIndex + 1]);
       // The same for the noise component:
-      nNorm = sqr(noiseBuffer[2 * bandIndex + 0]) + sqr(noiseBuffer[2 * bandIndex + 1]);
+      nNorm = noiseBuffer[bandIndex];
       
       attenuationFactor = yNorm / (SIZE * (yNorm + kSquared * nNorm));
       
