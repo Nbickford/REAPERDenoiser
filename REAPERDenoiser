@@ -43,18 +43,18 @@ bufferI2L = SIZE; // The left input tile 2 buffer starts at memory address SIZE.
 bufferO1L = 2*SIZE; // The left output tile 1 buffer starts at address 2*SIZE.
 bufferO2L = 3*SIZE; // And so on
 noiseBufferL = 4*SIZE; // The FFT of the noise sample uses 2*SIZE memory
-// addresses, as opposed to the rest of the buffers.
-bufferI1R = 6*SIZE; // Right channels
-bufferI2R = 7*SIZE;
-bufferO1R = 8*SIZE;
-bufferO2R = 9*SIZE;
-noiseBufferR = 10*SIZE;
+// but taking the norm reduces this to 1*SIZE, and saves time when processing effect
+bufferI1R = 5*SIZE; // Right channels
+bufferI2R = 6*SIZE;
+bufferO1R = 7*SIZE;
+bufferO2R = 8*SIZE;
+noiseBufferR = 9*SIZE;
 // We also use a temporary buffer of complex numbers in order to store our
 // audio signals using complex numbers. REAPER's implementation of JSFX supports
 // fft_real, which allows us to avoid this, as of this writing, but ReaPlugs
 // doesn't have this yet.
-fftBuffer = 12 * SIZE; // length 2*SIZE
-freembuf(14*SIZE + 1);
+fftBuffer = 10 * SIZE; // length 2*SIZE
+freembuf(12*SIZE + 1);
 
 // samplesCollected will be our position in the last of the two tiles.
 // As such, it'll range from 0 to (SIZE/2) - 1.
@@ -62,7 +62,6 @@ freembuf(14*SIZE + 1);
 // samplesCollected + SIZE/2, and our position in the second tile will be
 // samplesCollected) 
 samplesCollected = 0;
-
 
 // Finally, the algorithm we use outputs modified audio SIZE samples after we
 // input it. If we tell REAPER that the plugin has a delay of SIZE samples,
@@ -80,8 +79,8 @@ pdc_top_ch=2;
 slider1 > 0.5 ? (
   previousMode < 0.5 ? (
     bandIndex = 0;
-    memset(noiseBufferL, 0, 2*SIZE);
-    memset(noiseBufferR, 0, 2*SIZE);
+    memset(noiseBufferL, 0, SIZE);
+    memset(noiseBufferR, 0, SIZE);
     previousMode = 1;
   )
 ) : previousMode = 0;
@@ -175,10 +174,9 @@ local(sample tilePos1 tilePos2 hannWindowTile1 hannWindowTile2 index bandIndex
       index = 0;
       loop(SIZE,
         normSquareNew = sqr(fftBuffer[2 * index + 0]) + sqr(fftBuffer[2 * index + 1]);
-        normSquareOld = sqr(noiseBuffer[2 * index + 0]) + sqr(noiseBuffer[2 * index + 1]);
+        normSquareOld = noiseBuffer[index];
         normSquareNew >= normSquareOld ? (
-          noiseBuffer[2 * index + 0] = fftBuffer[2 * index + 0];
-          noiseBuffer[2 * index + 1] = fftBuffer[2 * index + 1];
+          noiseBuffer[index] = normSquareNew;
         );
         index += 1;
       );
@@ -198,7 +196,7 @@ local(sample tilePos1 tilePos2 hannWindowTile1 hannWindowTile2 index bandIndex
       // Compute |Y(f)|^2 = real(Y(f))^2 + imaginary(Y(f))^2
       yNorm = sqr(fftBuffer[2 * bandIndex + 0]) + sqr(fftBuffer[2 * bandIndex + 1]);
       // The same for the noise component:
-      nNorm = sqr(noiseBuffer[2 * bandIndex + 0]) + sqr(noiseBuffer[2 * bandIndex + 1]);
+      nNorm = noiseBuffer[bandIndex];
       
       attenuationFactor = yNorm / (SIZE * (yNorm + kSquared * nNorm));
       
@@ -253,5 +251,5 @@ samplesCollected == SIZE/2 ? (
 // state of the plugin from a serialized version, these functions copy data into
 // noiseBufferL and noiseBufferR. But when writing out the state of the plugin,
 // they work the other way, copying data out of noiseBufferL and noiseBufferR.
-file_mem(0, noiseBufferL, 2*SIZE);
-file_mem(0, noiseBufferR, 2*SIZE);
+file_mem(0, noiseBufferL, SIZE);
+file_mem(0, noiseBufferR, SIZE);
