@@ -27,6 +27,7 @@ in_pin:Noisy Audio 2
 out_pin:Denoised Audio 1
 out_pin:Denoised Audio 2
 
+
 @init
 // On initialization, initialize all of our variables.
 
@@ -62,6 +63,7 @@ freembuf(14*SIZE + 1);
 // samplesCollected) 
 samplesCollected = 0;
 
+
 // Finally, the algorithm we use outputs modified audio SIZE samples after we
 // input it. If we tell REAPER that the plugin has a delay of SIZE samples,
 // REAPER can automatically compensate for this and make it appear as if there's
@@ -69,6 +71,21 @@ samplesCollected = 0;
 pdc_delay = SIZE; 
 pdc_bot_ch=0;
 pdc_top_ch=2;
+
+
+@slider
+// A simple function to zero out the noise buffers when switching mode to "Record Noise Sample"
+// previousMode should default to 0 on first initialization, but setting it to 0 in @init will cause
+// this code to get run again, and the noise profile lost even when switching to "Denoise Input"
+slider1 > 0.5 ? (
+  previousMode < 0.5 ? (
+    bandIndex = 0;
+    memset(noiseBufferL, 0, 2*SIZE);
+    memset(noiseBufferR, 0, 2*SIZE);
+    previousMode = 1;
+  )
+) : previousMode = 0;
+
 
 @sample
 // We'll write a function to denoise a single channel, and then we'll call this
@@ -152,9 +169,19 @@ local(sample tilePos1 tilePos2 hannWindowTile1 hannWindowTile2 index bandIndex
     // If slider1 is greater than 0.5 (i.e. the user selected "Record Noise
     // Sample", we store the FFTs of each of these buffers.
     slider1 > 0.5? (
-      // memcpy(A, B, C) copies C words from the memory starting at B into
-      // the memory starting at A.
-      memcpy(noiseBuffer, fftBuffer, 2*SIZE);
+      // for each band, compare the norm of the noise in this frame.
+      // If it is greater than what's already there for this band, then copy
+      // it into the noiseBuffer
+      index = 0;
+      loop(SIZE,
+        normSquareNew = sqr(fftBuffer[2 * index + 0]) + sqr(fftBuffer[2 * index + 1]);
+        normSquareOld = sqr(noiseBuffer[2 * index + 0]) + sqr(noiseBuffer[2 * index + 1]);
+        normSquareNew >= normSquareOld ? (
+          noiseBuffer[2 * index + 0] = fftBuffer[2 * index + 0];
+          noiseBuffer[2 * index + 1] = fftBuffer[2 * index + 1];
+        );
+        index += 1;
+      );
     );
     
     // Apply Norbert Weiner's filtering algorithm,
@@ -226,5 +253,5 @@ samplesCollected == SIZE/2 ? (
 // state of the plugin from a serialized version, these functions copy data into
 // noiseBufferL and noiseBufferR. But when writing out the state of the plugin,
 // they work the other way, copying data out of noiseBufferL and noiseBufferR.
-file_mem(0, noiseBufferL, SIZE);
-file_mem(0, noiseBufferR, SIZE);
+file_mem(0, noiseBufferL, 2*SIZE);
+file_mem(0, noiseBufferR, 2*SIZE);
