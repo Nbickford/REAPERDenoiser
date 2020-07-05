@@ -34,6 +34,6 @@ places where it's been used, but I'll ask you for permission before listing your
 
 ## Code of Conduct
 REAPERDenoiser is governed by version 1.4 of the Contributor Covenant Code of Conduct located at
-https://github.com/Nbickford/REAPERDenoiser/blob/master/CODE_OF_CONDUCT.md. When participating in or representing this project,
+https://github.com/Nbickford/REAPERDenoiser/blob/main/CODE_OF_CONDUCT.md. When participating in or representing this project,
 you are expected to uphold this code. Please report unacceptable behavior to <nbickford@ucla.edu> or to any other maintainer.
 See the Code of Conduct for more information.
